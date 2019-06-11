@@ -6,7 +6,7 @@ from __future__ import print_function
 
 import argparse
 import random
-import tensorflow as tf
+import logging
 
 from pba.augmentation_transforms_hp import NUM_HP_TRANSFORM
 
@@ -115,7 +115,7 @@ def create_hparams(state, FLAGS):  # pylint: disable=invalid-name
     tf.hparams object.
   """
     epochs = 0
-    tf.logging.info('data path: {}'.format(FLAGS.data_path))
+    logging.info('data path: {}'.format(FLAGS.data_path))
     hparams = tf.contrib.training.HParams(
         train_size=FLAGS.train_size,
         validation_size=FLAGS.val_size,
@@ -136,7 +136,7 @@ def create_hparams(state, FLAGS):  # pylint: disable=invalid-name
         hparams.add_hparam('use_hp_policy', FLAGS.use_hp_policy)
         if FLAGS.use_hp_policy:
             if FLAGS.hp_policy == 'random':
-                tf.logging.info('RANDOM SEARCH')
+                logging.info('RANDOM SEARCH')
                 parsed_policy = []
                 for i in range(NUM_HP_TRANSFORM * 4):
                     if i % 2 == 0:
@@ -197,9 +197,9 @@ def create_hparams(state, FLAGS):  # pylint: disable=invalid-name
     else:
         raise ValueError('Not Valid Model Name: %s' % FLAGS.model_name)
     if FLAGS.epochs > 0:
-        tf.logging.info('overwriting with custom epochs')
+        logging.info('overwriting with custom epochs')
         epochs = FLAGS.epochs
     hparams.add_hparam('num_epochs', epochs)
-    tf.logging.info('epochs: {}, lr: {}, wd: {}'.format(
+    logging.info('epochs: {}, lr: {}, wd: {}'.format(
         hparams.num_epochs, hparams.lr, hparams.weight_decay_rate))
     return hparams

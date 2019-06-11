@@ -54,7 +54,7 @@ class RayModel(Trainable):
         return True
 
 
-def main(_):
+def main():
     FLAGS = create_parser("train")  # pylint: disable=invalid-name
     hparams = create_hparams("train", FLAGS)
 
@@ -82,4 +82,4 @@ def main(_):
 
 if __name__ == "__main__":
     # tf.logging.set_verbosity(tf.logging.INFO)
-    tf.app.run()
+    main()
