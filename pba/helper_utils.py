@@ -19,7 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import tensorflow as tf
+import logging
 
 from autoaugment.helper_utils import setup_loss, decay_weights, cosine_lr  # pylint: disable=unused-import
 
@@ -48,7 +48,7 @@ def eval_child_model(session, model, data_loader, mode):
     else:
         raise ValueError('Not valid eval mode')
     assert len(images) == len(labels)
-    tf.logging.info('model.batch_size is {}'.format(model.batch_size))
+    logging.info('model.batch_size is {}'.format(model.batch_size))
     eval_batches = int(len(images) / model.batch_size)
     if len(images) % model.batch_size != 0:
         eval_batches += 1
@@ -67,7 +67,7 @@ def eval_child_model(session, model, data_loader, mode):
             np.equal(np.argmax(eval_labels, 1), np.argmax(preds, 1)))
         count += len(preds)
     assert count == len(images)
-    tf.logging.info('correct: {}, total: {}'.format(correct, count))
+    logging.info('correct: {}, total: {}'.format(correct, count))
     return correct / count
 
 
@@ -101,8 +101,8 @@ def get_lr(curr_epoch, hparams, iteration=None):
                        hparams.num_epochs)
     else:
         lr = cosine_lr(hparams.lr, curr_epoch, iteration, batches_per_epoch,
-                       hparams.num_epochs)
-        tf.logging.log_first_n(tf.logging.WARN, 'Default to cosine learning rate.', 1)
+                       hparams.num_epochs)        
+        logging.warn('Default to cosine learning rate.')
     return lr
 
 
@@ -119,13 +119,13 @@ def run_epoch_training(session, model, data_loader, curr_epoch):
     The accuracy of 'model' on the training set
   """
     steps_per_epoch = int(model.hparams.train_size / model.hparams.batch_size)
-    tf.logging.info('steps per epoch: {}'.format(steps_per_epoch))
+    logging.info('steps per epoch: {}'.format(steps_per_epoch))
     curr_step = session.run(model.global_step)
     assert curr_step % steps_per_epoch == 0
 
     # Get the current learning rate for the model based on the current epoch
     curr_lr = get_lr(curr_epoch, model.hparams, iteration=0)
-    tf.logging.info('lr of {} for epoch {}'.format(curr_lr, curr_epoch))
+    logging.info('lr of {} for epoch {}'.format(curr_lr, curr_epoch))
 
     correct = 0
     count = 0
@@ -134,7 +134,7 @@ def run_epoch_training(session, model, data_loader, curr_epoch):
         # Update the lr rate variable to the current LR.
         model.lr_rate_ph.load(curr_lr, session=session)
         if step % 20 == 0:
-            tf.logging.info('Training {}/{}'.format(step, steps_per_epoch))
+            logging.info('Training {}/{}'.format(step, steps_per_epoch))
 
         train_images, train_labels = data_loader.next_batch(curr_epoch)
         _, step, preds = session.run(
@@ -149,5 +149,5 @@ def run_epoch_training(session, model, data_loader, curr_epoch):
         count += len(preds)
     train_accuracy = correct / count
 
-    tf.logging.info('Train accuracy: {}'.format(train_accuracy))
+    logging.info('Train accuracy: {}'.format(train_accuracy))
     return train_accuracy

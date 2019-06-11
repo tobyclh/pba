@@ -9,7 +9,7 @@ import numpy as np
 import ray
 from ray.tune import run_experiments
 from ray.tune.schedulers import PopulationBasedTraining
-import tensorflow as tf
+
 
 from pba.setup import create_hparams
 from pba.setup import create_parser
@@ -92,5 +92,5 @@ def main(_):
 
 
 if __name__ == "__main__":
-    tf.logging.set_verbosity(tf.logging.INFO)
-    tf.app.run()
+    # tf.logging.set_verbosity(tf.logging.INFO)
+    main(None)

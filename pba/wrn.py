@@ -1,76 +1,101 @@
+__all__ = ['Wide_ResNet']
 """Builds the Wide-ResNet Model."""
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
-import tensorflow as tf
+import torch
+import torch.nn as nn
+import torch.nn.init as init
+import torch.nn.functional as F
 
-import autoaugment.custom_ops as ops
-from autoaugment.wrn import residual_block, _res_add
+import sys
+import numpy as np
 
 
-def build_wrn_model(images, num_classes, wrn_size, depth=28):
-    """Builds the WRN model.
+def conv3x3(in_planes, out_planes, stride=1):
+    return nn.Conv2d(in_planes, out_planes, kernel_size=3, stride=stride, padding=1, bias=True)
 
-  Build the Wide ResNet model from https://arxiv.org/abs/1605.07146.
 
-  Args:
-    images: Tensor of images that will be fed into the Wide ResNet Model.
-    num_classes: Number of classed that the model needs to predict.
-    wrn_size: Parameter that scales the number of filters in the Wide ResNet
-      model.
-    depth: Number of layers of model.
+def conv_init(m):
+    classname = m.__class__.__name__
+    if classname.find('Conv') != -1:
+        init.xavier_uniform(m.weight, gain=np.sqrt(2))
+        init.constant(m.bias, 0)
+    elif classname.find('BatchNorm') != -1:
+        init.constant(m.weight, 1)
+        init.constant(m.bias, 0)
 
-  Returns:
-    The logits of the Wide ResNet model.
 
-  28-10 is wrn_size of 160 -> k = 10, and depth=28 -> blocks = 4
-  40-2 is wrn_size of 32 -> k = 2, and depth=40 -> blocks = 6
-  """
-    assert (depth - 4) % 6 == 0
-    kernel_size = wrn_size
-    filter_size = 3
-    num_blocks_per_resnet = (depth - 4) // 6  # 4
-    filters = [
-        min(kernel_size, 16), kernel_size, kernel_size * 2, kernel_size * 4
-    ]
-    strides = [1, 2, 2]  # stride for each resblock
+class wide_basic(nn.Module):
+    def __init__(self, in_planes, planes, dropout_rate, stride=1):
+        super(wide_basic, self).__init__()
+        self.bn1 = nn.BatchNorm2d(in_planes)
+        self.conv1 = nn.Conv2d(
+            in_planes, planes, kernel_size=3, padding=1, bias=True)
+        self.dropout = nn.Dropout(p=dropout_rate)
+        self.bn2 = nn.BatchNorm2d(planes)
+        self.conv2 = nn.Conv2d(planes, planes, kernel_size=3,
+                               stride=stride, padding=1, bias=True)
 
-    # Run the first conv
-    with tf.variable_scope('init'):
-        x = images
-        output_filters = filters[0]
-        x = ops.conv2d(x, output_filters, filter_size, scope='init_conv')
+        self.shortcut = nn.Sequential()
+        if stride != 1 or in_planes != planes:
+            self.shortcut = nn.Sequential(
+                nn.Conv2d(in_planes, planes, kernel_size=1,
+                          stride=stride, bias=True),
+            )
 
-    first_x = x  # Res from the beginning
-    orig_x = x  # Res from previous block
+    def forward(self, x):
+        out = self.dropout(self.conv1(F.relu(self.bn1(x))))
+        out = self.conv2(F.relu(self.bn2(out)))
+        out += self.shortcut(x)
+        return out
 
-    for block_num in range(1, 4):
-        with tf.variable_scope('unit_{}_0'.format(block_num)):
-            activate_before_residual = True if block_num == 1 else False
-            x = residual_block(
-                x,
-                filters[block_num - 1],
-                filters[block_num],
-                strides[block_num - 1],
-                activate_before_residual=activate_before_residual)
-        for i in range(1, num_blocks_per_resnet):
-            with tf.variable_scope('unit_{}_{}'.format(block_num, i)):
-                x = residual_block(
-                    x,
-                    filters[block_num],
-                    filters[block_num],
-                    1,
-                    activate_before_residual=False)
-        x, orig_x = _res_add(filters[block_num - 1], filters[block_num],
-                             strides[block_num - 1], x, orig_x)
-    final_stride_val = np.prod(strides)
-    x, _ = _res_add(filters[0], filters[3], final_stride_val, x, first_x)
-    with tf.variable_scope('unit_last'):
-        x = ops.batch_norm(x, scope='final_bn')
-        x = tf.nn.relu(x)
-        x = ops.global_avg_pool(x)
-        logits = ops.fc(x, num_classes)
-    return logits
+
+class Wide_ResNet(nn.Module):
+    def __init__(self, num_classes: int, wrn_size: int, depth:int=28, dropout_rate:float=0.0):
+        super(Wide_ResNet, self).__init__()
+        self.in_planes = 16
+
+        assert ((depth-4) % 6 == 0), 'Wide-resnet depth should be 6n+4'
+        n = int((depth-4)/6)
+        k = wrn_size
+
+        print('| Wide-Resnet %dx%d' % (depth, k))
+        nStages = [16, 16*k, 32*k, 64*k]
+
+        self.conv1 = conv3x3(3, nStages[0])
+        self.layer1 = self._wide_layer(
+            wide_basic, nStages[1], n, dropout_rate, stride=1)
+        self.layer2 = self._wide_layer(
+            wide_basic, nStages[2], n, dropout_rate, stride=2)
+        self.layer3 = self._wide_layer(
+            wide_basic, nStages[3], n, dropout_rate, stride=2)
+        self.bn1 = nn.BatchNorm2d(nStages[3], momentum=0.9)
+        self.linear = nn.Linear(nStages[3], num_classes)
+
+    def _wide_layer(self, block, planes, num_blocks, dropout_rate, stride):
+        strides = [stride] + [1]*(num_blocks-1)
+        layers = []
+
+        for stride in strides:
+            layers.append(block(self.in_planes, planes, dropout_rate, stride))
+            self.in_planes = planes
+
+        return nn.Sequential(*layers)
+
+    def forward(self, x):
+        out = self.conv1(x)
+        out = self.layer1(out)
+        out = self.layer2(out)
+        out = self.layer3(out)
+        out = F.relu(self.bn1(out))
+        out = F.avg_pool2d(out, 8)
+        out = out.view(out.size(0), -1)
+        out = self.linear(out)
+
+        return out
+
+
+if __name__ == '__main__':
+    net = Wide_ResNet(10, 10, 28, 0.3)
+    y = net(torch.randn(1, 3, 32, 32))
+
+    print(y.size())

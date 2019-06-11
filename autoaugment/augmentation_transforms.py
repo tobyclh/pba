@@ -21,10 +21,8 @@ from __future__ import print_function
 
 import inspect
 import random
-import numpy as np
-# pylint:disable=g-multiple-import
-from PIL import ImageOps, ImageEnhance, ImageFilter, Image
-# pylint:enable=g-multiple-import
+import numpy as np # pylint:disable=g-multiple-import
+from PIL import ImageOps, ImageEnhance, ImageFilter, Image # pylint:enable=g-multiple-import
 
 
 IMAGE_SIZE = 32

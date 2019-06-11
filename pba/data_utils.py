@@ -26,17 +26,21 @@ except:
 import os
 import random
 import numpy as np
-import tensorflow as tf
 import torchvision
 
-from autoaugment.data_utils import unpickle
 import pba.policies as found_policies
 from pba.utils import parse_log_schedule
 import pba.augmentation_transforms_hp as augmentation_transforms_pba
 import pba.augmentation_transforms as augmentation_transforms_autoaug
-
+import logging
 
 # pylint:disable=logging-format-interpolation
+
+def unpickle(f):
+  logging.info('loading file: {}'.format(f))
+  with open(f, 'r') as fo:
+    d = cPickle.load(fo)
+  return d
 
 
 def parse_policy(policy_emb, augmentation_transforms):
@@ -86,7 +90,7 @@ class DataSet(object):
             std = self.train_images.std(axis=(0, 1, 2))
             self.augmentation_transforms.MEANS[hparams.dataset + '_' + str(hparams.train_size)] = mean
             self.augmentation_transforms.STDS[hparams.dataset + '_' + str(hparams.train_size)] = std
-        tf.logging.info('mean:{}    std: {}'.format(mean, std))
+        logging.info('mean:{}    std: {}'.format(mean, std))
 
         self.train_images = (self.train_images - mean) / std
         self.val_images = (self.val_images - mean) / std
@@ -95,7 +99,7 @@ class DataSet(object):
         assert len(self.test_images) == len(self.test_labels)
         assert len(self.train_images) == len(self.train_labels)
         assert len(self.val_images) == len(self.val_labels)
-        tf.logging.info('train dataset size: {}, test: {}, val: {}'.format(
+        logging.info('train dataset size: {}, test: {}, val: {}'.format(
             len(self.train_images), len(self.test_images), len(self.val_images)))
 
     def parse_policy(self, hparams):
@@ -113,10 +117,10 @@ class DataSet(object):
             if isinstance(hparams.hp_policy,
                           str) and hparams.hp_policy.endswith('.txt'):
                 if hparams.num_epochs % hparams.hp_policy_epochs != 0:
-                    tf.logging.warning(
+                    logging.warning(
                         "Schedule length (%s) doesn't divide evenly into epochs (%s), interpolating.",
                         hparams.num_epochs, hparams.hp_policy_epochs)
-                tf.logging.info(
+                logging.info(
                     'schedule policy trained on {} epochs, parsing from: {}, multiplier: {}'
                     .format(
                         hparams.hp_policy_epochs, hparams.hp_policy,
@@ -129,7 +133,7 @@ class DataSet(object):
             elif isinstance(hparams.hp_policy,
                             str) and hparams.hp_policy.endswith('.p'):
                 assert hparams.num_epochs % hparams.hp_policy_epochs == 0
-                tf.logging.info('custom .p file, policy number: {}'.format(
+                logging.info('custom .p file, policy number: {}'.format(
                     hparams.schedule_num))
                 with open(hparams.hp_policy, 'rb') as f:
                     policy = cPickle.load(f)[hparams.schedule_num]
@@ -151,7 +155,7 @@ class DataSet(object):
                         parse_policy(pol[split:],
                                      self.augmentation_transforms))
                     self.policy.append(cur_pol)
-                tf.logging.info('using HP policy schedule, last: {}'.format(
+                logging.info('using HP policy schedule, last: {}'.format(
                     self.policy[-1]))
             elif isinstance(raw_policy, list):
                 split = len(raw_policy) // 2
@@ -160,12 +164,12 @@ class DataSet(object):
                 self.policy.extend(
                     parse_policy(raw_policy[split:],
                                  self.augmentation_transforms))
-                tf.logging.info('using HP Policy, policy: {}'.format(
+                logging.info('using HP Policy, policy: {}'.format(
                     self.policy))
 
         else:
             self.augmentation_transforms = augmentation_transforms_autoaug
-            tf.logging.info('using ENAS Policy or no augmentaton policy')
+            logging.info('using ENAS Policy or no augmentaton policy')
             if 'svhn' in hparams.dataset:
                 self.good_policies = found_policies.good_policies_svhn()
             else:
@@ -175,7 +179,7 @@ class DataSet(object):
     def reset_policy(self, new_hparams):
         self.hparams = new_hparams
         self.parse_policy(new_hparams)
-        tf.logging.info('reset aug policy')
+        logging.info('reset aug policy')
         return
 
     def load_cifar(self, hparams):
@@ -406,7 +410,7 @@ class DataSet(object):
             elif 'svhn' in self.hparams.dataset:
                 pass
             else:
-                tf.logging.log_first_n(tf.logging.WARN, 'Using default random flip and crop.', 1)
+                logging.log_first_n(logging.WARN, 'Using default random flip and crop.', 1)
                 final_img = self.augmentation_transforms.random_flip(
                     self.augmentation_transforms.zero_pad_and_crop(
                         final_img, 4))
@@ -422,7 +426,7 @@ class DataSet(object):
                     final_img = self.augmentation_transforms.cutout_numpy(
                         final_img, size=20)
                 else:
-                    tf.logging.log_first_n(tf.logging.WARN, 'Using default cutout size (16x16).', 1)
+                    logging.log_first_n(logging.WARN, 'Using default cutout size (16x16).', 1)
                     final_img = self.augmentation_transforms.cutout_numpy(
                         final_img)
             final_imgs.append(final_img)

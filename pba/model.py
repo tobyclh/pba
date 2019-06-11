@@ -22,19 +22,21 @@ from __future__ import print_function
 import contextlib
 import os
 import time
+import sys
 
 import numpy as np
-import tensorflow as tf
-
+# import tensorflow as tf
+import logging
+import torch
 import autoaugment.custom_ops as ops
 from autoaugment.shake_drop import build_shake_drop_model
 from autoaugment.shake_shake import build_shake_shake_model
 import pba.data_utils as data_utils
 import pba.helper_utils as helper_utils
-from pba.wrn import build_wrn_model
+from pba.wrn import Wide_ResNet
 from pba.resnet import build_resnet_model
 
-arg_scope = tf.contrib.framework.arg_scope
+# arg_scope = tf.contrib.framework.arg_scope
 
 
 def setup_arg_scopes(is_training):
@@ -84,7 +86,7 @@ def build_model(inputs, num_classes, is_training, hparams):
         if hparams.model_name == 'pyramid_net':
             logits = build_shake_drop_model(inputs, num_classes, is_training)
         elif hparams.model_name == 'wrn':
-            logits = build_wrn_model(inputs, num_classes, hparams.wrn_size)
+            logits = Wide_ResNet(num_classes, hparams.wrn_size)
         elif hparams.model_name == 'shake_shake':
             logits = build_shake_shake_model(inputs, num_classes, hparams,
                                              is_training)
@@ -112,12 +114,9 @@ class Model(object):
         self._setup_images_and_labels(self.hparams.dataset)
         self._build_graph(self.images, self.labels, mode)
 
-        self.init = tf.group(tf.global_variables_initializer(),
-                             tf.local_variables_initializer())
-
     def _setup_misc(self, mode):
         """Sets up miscellaneous in the model constructor."""
-        self.lr_rate_ph = tf.Variable(0.0, name='lrn_rate', trainable=False)
+        self.lr_rate_ph = 0.0
         self.reuse = None if (mode == 'train') else True
         self.batch_size = self.hparams.batch_size
         if mode == 'eval':
@@ -126,13 +125,11 @@ class Model(object):
     def _setup_images_and_labels(self, dataset):
         """Sets up image and label placeholders for the model."""
         if dataset == 'cifar10' or dataset == 'cifar100' or self.mode == 'train':
-            self.images = tf.placeholder(tf.float32,
-                                         [self.batch_size, self.image_size, self.image_size, 3])
-            self.labels = tf.placeholder(tf.float32,
-                                         [self.batch_size, self.num_classes])
+            self.images = torch.zeros(self.batch_size, self.image_size, self.image_size, 3)
+            self.labels = torch.zeros(self.batch_size, self.num_classes)
         else:
-            self.images = tf.placeholder(tf.float32, [None, self.image_size, self.image_size, 3])
-            self.labels = tf.placeholder(tf.float32, [None, self.num_classes])
+            self.images = torch.zeros(1, self.image_size, self.image_size, 3)
+            self.labels = torch.zeros(1, self.num_classes)
 
     def assign_epoch(self, session, epoch_value):
         session.run(
@@ -148,7 +145,7 @@ class Model(object):
         """
         is_training = 'train' in mode
         if is_training:
-            self.global_step = tf.train.get_or_create_global_step()
+            self.global_step = 0
 
         logits = build_model(images, self.num_classes, is_training,
                              self.hparams)
@@ -163,20 +160,12 @@ class Model(object):
         if is_training:
             self._build_train_op()
 
-        # Setup checkpointing for this child model
-        # Keep 2 or more checkpoints around during training.
-        with tf.device('/cpu:0'):
-            self.saver = tf.train.Saver(max_to_keep=10)
-
-        self.init = tf.group(tf.global_variables_initializer(),
-                             tf.local_variables_initializer())
-
     def _calc_num_trainable_params(self):
         self.num_trainable_params = np.sum([
             np.prod(var.get_shape().as_list())
             for var in tf.trainable_variables()
         ])
-        tf.logging.info('number of trainable params: {}'.format(
+        logging.info('number of trainable params: {}'.format(
             self.num_trainable_params))
 
     def _build_train_op(self):
@@ -231,13 +220,13 @@ class ModelTrainer(object):
         model_save_name = os.path.join(checkpoint_dir,
                                        'model.ckpt') + '-' + str(step)
         save_path = self.saver.save(self.session, model_save_name)
-        tf.logging.info('Saved child model')
+        logging.info('Saved child model')
         return model_save_name
 
     def extract_model_spec(self, checkpoint_path):
         """Loads a checkpoint with the architecture structure stored in the name."""
         self.saver.restore(self.session, checkpoint_path)
-        tf.logging.warning(
+        logging.warning(
             'Loaded child model checkpoint from {}'.format(checkpoint_path))
 
     def eval_child_model(self, model, data_loader, mode):
@@ -251,18 +240,19 @@ class ModelTrainer(object):
         Returns:
           Accuracy of the model on the specified dataset.
         """
-        tf.logging.info('Evaluating child model in mode {}'.format(mode))
+        logging.info('Evaluating child model in mode {}'.format(mode))
         while True:
             try:
                 accuracy = helper_utils.eval_child_model(
                     self.session, model, data_loader, mode)
-                tf.logging.info(
+                logging.info(
                     'Eval child model accuracy: {}'.format(accuracy))
                 # If epoch trained without raising the below errors, break
                 # from loop.
                 break
-            except (tf.errors.AbortedError, tf.errors.UnavailableError) as e:
-                tf.logging.info(
+            except:
+                e = sys.exc_info()[0]
+                logging.info(
                     'Retryable error caught: {}.  Retrying.'.format(e))
 
         return accuracy
@@ -302,11 +292,12 @@ class ModelTrainer(object):
                 train_accuracy = helper_utils.run_epoch_training(
                     self.session, self.m, self.data_loader, curr_epoch)
                 break
-            except (tf.errors.AbortedError, tf.errors.UnavailableError) as e:
-                tf.logging.info(
+            except:
+                e = sys.exc_info()[0]
+                logging.info(
                     'Retryable error caught: {}.  Retrying.'.format(e))
-        tf.logging.info('Finished epoch: {}'.format(curr_epoch))
-        tf.logging.info('Epoch time(min): {}'.format(
+        logging.info('Finished epoch: {}'.format(curr_epoch))
+        logging.info('Epoch time(min): {}'.format(
             (time.time() - start_time) / 60.0))
         return train_accuracy
 
@@ -317,7 +308,7 @@ class ModelTrainer(object):
                                                   'test')
         else:
             test_accuracy = 0
-        tf.logging.info('Test Accuracy: {}'.format(test_accuracy))
+        logging.info('Test Accuracy: {}'.format(test_accuracy))
         return test_accuracy
 
     def run_model(self, epoch):
@@ -327,7 +318,7 @@ class ModelTrainer(object):
         if self.hparams.validation_size > 0:
             valid_accuracy = self.eval_child_model(self.meval,
                                                    self.data_loader, 'val')
-        tf.logging.info('Train Acc: {}, Valid Acc: {}'.format(
+        logging.info('Train Acc: {}, Valid Acc: {}'.format(
             training_accuracy, valid_accuracy))
         return training_accuracy, valid_accuracy
 
