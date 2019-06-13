@@ -21,7 +21,8 @@ from __future__ import print_function
 import numpy as np
 import logging
 
-from autoaugment.helper_utils import setup_loss, decay_weights, cosine_lr  # pylint: disable=unused-import
+from autoaugment.helper_utils import cosine_lr  # pylint: disable=unused-import
+import torch.optim 
 
 
 def eval_child_model(session, model, data_loader, mode):
@@ -70,24 +71,15 @@ def eval_child_model(session, model, data_loader, mode):
     logging.info('correct: {}, total: {}'.format(correct, count))
     return correct / count
 
-
 def step_lr(learning_rate, epoch):
-    """Step Learning rate.
-
-  Args:
-    learning_rate: Initial learning rate.
-    epoch: Current epoch we are one. This is one based.
-
-  Returns:
-    The learning rate to be used for this current batch.
-  """
+  def get_lr(epoch):
     if epoch < 80:
         return learning_rate
     elif epoch < 120:
         return learning_rate * 0.1
     else:
         return learning_rate * 0.01
-
+  return get_lr
 
 def get_lr(curr_epoch, hparams, iteration=None):
     """Returns the learning rate during training based on the current epoch."""

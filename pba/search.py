@@ -42,12 +42,12 @@ def main(_):
     def explore(config):
         """Custom explore function.
 
-    Args:
-      config: dictionary containing ray config params.
+        Args:
+        config: dictionary containing ray config params.
 
-    Returns:
-      Copy of config with modified augmentation policy.
-    """
+        Returns:
+        Copy of config with modified augmentation policy.
+        """
         new_params = []
         if config["explore"] == "cifar10":
             for i, param in enumerate(config["hp_policy"]):

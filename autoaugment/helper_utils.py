@@ -21,11 +21,13 @@ from __future__ import print_function
 
 import numpy as np
 import tensorflow as tf
-
+import torch
+from torch.nn.functional import softmax
 
 def setup_loss(logits, labels):
   """Returns the cross entropy for the given `logits` and `labels`."""
-  predictions = tf.nn.softmax(logits)
+  predictions = softmax(logits)
+  torch.nn.CrossEntropyLoss()
   cost = tf.losses.softmax_cross_entropy(onehot_labels=labels,
                                          logits=logits)
   return predictions, cost

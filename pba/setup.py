@@ -17,8 +17,7 @@ def create_parser(state):
     parser.add_argument(
         '--model_name',
         default='wrn',
-        choices=('wrn_28_10', 'wrn_40_2', 'shake_shake_32', 'shake_shake_96',
-                 'shake_shake_112', 'pyramid_net', 'resnet'))
+        choices=('wrn_28_10', 'wrn_40_2', 'pyramid_net', 'resnet'))
     parser.add_argument(
         '--data_path',
         default='/tmp/datasets/',

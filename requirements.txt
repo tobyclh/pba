@@ -1,4 +1,3 @@
-tensorflow-gpu
 ray
 jupyter
 requests
